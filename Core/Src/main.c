@@ -23,6 +23,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "stdio.h"
+#include "arm_math.h"
+
 //#include "arm_math.h"
 
 /* USER CODE END Includes */
@@ -68,9 +70,11 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 volatile uint32_t measuredFrequency = 0;
+volatile uint8_t adc_ready = 0;
 extern UART_HandleTypeDef huart2;
-//float32_t inputSignal[FFT_SIZE];
-//float32_t fftOutput[FFT_SIZE / 2];
+float fft_input[2 * FFT_SIZE];   // Input for FFT (complex format: real and imaginary parts)
+float fft_output[FFT_SIZE / 2]; // Magnitude output of the FFT
+#define SAMPLE_RATE 10000       // Define your sampling rate in Hz
 float thermistor_measurement[256];
 
 typedef struct {
@@ -274,38 +278,52 @@ float ReadVoltage(ADC_HandleTypeDef *hadc, uint32_t channel) {
 }
 
 
-/**
- * Funkcja do obliczeń FFT
- * @param input  - Tablica wejściowa (sygnał rzeczywisty)
- * @param output - Tablica wyjściowa (moduł częstotliwości)
- * @param size   - Liczba próbek (potęga 2)
- */
-/*void performFFT(const float32_t* input, float32_t* output, uint16_t size) {
-    // Bufor dla danych zespolonych
-    float32_t fftInputComplex[2 * size];   // Tablica zespolona wejściowa
-    float32_t fftOutputComplex[2 * size]; // Tablica zespolona wyjściowa
+void perform_fft(void) {
+    // Prepare FFT input (convert ADC samples to float and populate real part)
+    for (int i = 0; i < NUM_SAMPLES; i++) {
+        fft_input[2 * i] = ((float)adc_buffer[i] / 4095.0f) * 3.3f; // Scale to voltage
+        fft_input[2 * i + 1] = 0.0f; // Imaginary part is zero
+    }
 
-    // Struktura dla FFT
-    arm_cfft_instance_f32 S;
-
-    // Inicjalizacja struktury FFT
-    if (arm_cfft_init_f32(&S, size) != ARM_MATH_SUCCESS) {
-        printf("Błąd inicjalizacji FFT\n");
+    // Initialize FFT instance
+    arm_cfft_instance_f32 fft_instance;
+    if (arm_cfft_init_f32(&fft_instance, FFT_SIZE) != ARM_MATH_SUCCESS) {
+        printf("FFT Initialization Error!\n");
         return;
     }
 
-    // Konwersja sygnału na formę zespoloną (re, im)
-    for (int i = 0; i < size; i++) {
-        fftInputComplex[2 * i] = input[i];  // Część rzeczywista
-        fftInputComplex[2 * i + 1] = 0.0f;  // Część urojona
+    // Perform FFT
+    arm_cfft_f32(&fft_instance, fft_input, 0, 1);
+
+    // Compute magnitude (absolute value) of complex FFT output
+    arm_cmplx_mag_f32(fft_input, fft_output, FFT_SIZE / 2);
+
+    // Find the bin with the highest amplitude
+    float max_amplitude = 0.0f;
+    uint32_t max_index = 0;
+    for (int i = 0; i < FFT_SIZE / 2; i++) {
+        if (fft_output[i] > max_amplitude) {
+            max_amplitude = fft_output[i];
+            max_index = i;
+        }
     }
 
-    // Wykonanie FFT
-    arm_cfft_f32(&S, fftInputComplex, 0, 1); // 0: forward FFT, 1: normalizacja
+    // Compute the frequency corresponding to the max amplitude
+    float dominant_frequency = (float)max_index * SAMPLE_RATE / FFT_SIZE;
 
-    // Obliczenie modułu sygnału (częstotliwości)
-    arm_cmplx_mag_f32(fftInputComplex, output, size);
-}*/
+    // Print FFT results
+    printf("FFT Output (Frequency Bins):\n");
+    for (int i = 0; i < FFT_SIZE / 2; i++) {
+        printf("%.3f ", fft_output[i]);
+    }
+    printf("\n");
+
+    // Print dominant frequency
+    printf("Dominant Frequency: %.2f Hz, Amplitude: %.3f\n", dominant_frequency, max_amplitude);
+}
+
+
+
 //przełączanie pomiędzy pinami
 void toggle_pins(void) {
     static uint8_t state = 0;
@@ -316,25 +334,28 @@ void toggle_pins(void) {
             HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_SET);  // PB1 HIGH
             HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_RESET);  // PB2 LOW
             HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_RESET); // PB10 LOW
-
+            printf("0\n");
             break;
         case 1:
             HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_RESET);  // PB0 LOW
             HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_SET);    // PB1 HIGH
             HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_SET);  // PB2 HIGH
             HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_RESET); // PB10 LOW
+            printf("1\n");
             break;
         case 2:
             HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_RESET);  // PB0 LOW
             HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_RESET);  // PB1 LOW
             HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_SET);    // PB2 HIGH
             HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_SET); // PB10 HIGH
+            printf("2\n");
             break;
         case 3:
             HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_SET);  // PB0 HIGH
             HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_RESET);  // PB1 LOW
             HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_RESET);  // PB2 LOW
             HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_SET);   // PB10 HIGH
+            printf("3\n");
             break;
     }
 
@@ -343,6 +364,13 @@ void toggle_pins(void) {
 
     // Dodanie opóźnienia, żeby zmiany były zauważalne
     HAL_Delay(1000);  // Opóźnienie 500 ms
+}
+
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
+    if (hadc->Instance == ADC2) {
+        adc_ready = 1;  // Set a flag to indicate data is ready for processing
+    }
 }
 
 
@@ -388,6 +416,7 @@ int main(void)
   MX_TIM3_Init();
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
+  HAL_ADC_Start_DMA(&hadc2, (uint32_t *)adc_buffer, NUM_SAMPLES);
 
   /* USER CODE END 2 */
 
@@ -397,7 +426,13 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-	 printf("a");
+
+	 toggle_pins();
+	 if (adc_ready)
+	 {
+	     adc_ready = 0;       // Clear flag
+	     perform_fft();       // Call your FFT function
+	 }
     /* USER CODE BEGIN 3 */
 	  //toggle_pins();
   }
@@ -507,52 +542,43 @@ static void MX_ADC1_Init(void)
   * @param None
   * @retval None
   */
+
+
 static void MX_ADC2_Init(void)
 {
+    ADC_ChannelConfTypeDef sConfig = {0};
 
-  /* USER CODE BEGIN ADC2_Init 0 */
+    /* ADC2 Initialization */
+    hadc2.Instance = ADC2;
+    hadc2.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;  // Divide clock to balance speed and accuracy
+    hadc2.Init.Resolution = ADC_RESOLUTION_12B;           // 12-bit resolution
+    hadc2.Init.ScanConvMode = DISABLE;                    // Single channel
+    hadc2.Init.ContinuousConvMode = ENABLE;               // Continuous conversion mode
+    hadc2.Init.DiscontinuousConvMode = DISABLE;           // Disable discontinuous conversions
+    hadc2.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE; // No external trigger
+    hadc2.Init.ExternalTrigConv = ADC_SOFTWARE_START;     // Software-triggered conversions
+    hadc2.Init.DataAlign = ADC_DATAALIGN_RIGHT;           // Right-aligned data
+    hadc2.Init.NbrOfConversion = 1;                       // Single conversion
+    hadc2.Init.DMAContinuousRequests = ENABLE;            // Enable DMA for ADC
+    hadc2.Init.EOCSelection = ADC_EOC_SINGLE_CONV;        // End of Conversion after each sample
 
-  /* USER CODE END ADC2_Init 0 */
+    if (HAL_ADC_Init(&hadc2) != HAL_OK)
+    {
+        Error_Handler();
+    }
 
-  ADC_ChannelConfTypeDef sConfig = {0};
+    /* Configure ADC2 regular channel (PA0 -> ADC_CHANNEL_0) */
+    sConfig.Channel = ADC_CHANNEL_0;                     // Use ADC Channel 0 (PA0)
+    sConfig.Rank = 1;                                    // Rank 1 in the regular group
+    sConfig.SamplingTime = ADC_SAMPLETIME_15CYCLES;      // Increase sampling time for better accuracy
 
-  /* USER CODE BEGIN ADC2_Init 1 */
-
-  /* USER CODE END ADC2_Init 1 */
-
-  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
-  */
-  hadc2.Instance = ADC2;
-  hadc2.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
-  hadc2.Init.Resolution = ADC_RESOLUTION_12B;
-  hadc2.Init.ScanConvMode = DISABLE;
-  hadc2.Init.ContinuousConvMode = ENABLE;
-  hadc2.Init.DiscontinuousConvMode = DISABLE;
-  hadc2.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
-  hadc2.Init.ExternalTrigConv = ADC_SOFTWARE_START;
-  hadc2.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-  hadc2.Init.NbrOfConversion = 1;
-  hadc2.Init.DMAContinuousRequests = DISABLE;
-  hadc2.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
-  if (HAL_ADC_Init(&hadc2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
-  */
-  sConfig.Channel = ADC_CHANNEL_0;
-  sConfig.Rank = 1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
-  if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN ADC2_Init 2 */
-
-  /* USER CODE END ADC2_Init 2 */
-
+    if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK)
+    {
+        Error_Handler();
+    }
 }
+
+
 
 /**
   * @brief ADC3 Initialization Function
