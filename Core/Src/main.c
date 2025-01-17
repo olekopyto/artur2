@@ -277,28 +277,31 @@ float ReadVoltage(ADC_HandleTypeDef *hadc, uint32_t channel) {
     return 0;
 }
 
+#include "arm_math.h"
 
 void perform_fft(void) {
-    // Prepare FFT input (convert ADC samples to float and populate real part)
-    for (int i = 0; i < NUM_SAMPLES; i++) {
-        fft_input[2 * i] = ((float)adc_buffer[i] / 4095.0f) * 3.3f; // Scale to voltage
-        fft_input[2 * i + 1] = 0.0f; // Imaginary part is zero
-    }
-
-    // Initialize FFT instance
-    arm_cfft_instance_f32 fft_instance;
-    if (arm_cfft_init_f32(&fft_instance, FFT_SIZE) != ARM_MATH_SUCCESS) {
+    // Initialize RFFT instance
+    arm_rfft_fast_instance_f32 S;
+    if (arm_rfft_fast_init_f32(&S, FFT_SIZE) != ARM_MATH_SUCCESS) {
         printf("FFT Initialization Error!\n");
         return;
     }
 
+    // Convert ADC input to float and normalize
+    for (int i = 0; i < FFT_SIZE; i++) {
+        fft_input[i] = ((float)adc_buffer[i] / 4095.0f) * 3.3f; // Scale to voltage
+    }
+
     // Perform FFT
-    arm_cfft_f32(&fft_instance, fft_input, 0, 1);
+    arm_rfft_fast_f32(&S, fft_input, fft_output, 0);
 
-    // Compute magnitude (absolute value) of complex FFT output
-    arm_cmplx_mag_f32(fft_input, fft_output, FFT_SIZE / 2);
+    // Compute magnitude of the FFT output
+    for (int i = 0; i < FFT_SIZE / 2; i++) {
+        fft_output[i] = sqrtf(fft_output[2 * i] * fft_output[2 * i] +
+                              fft_output[2 * i + 1] * fft_output[2 * i + 1]);
+    }
 
-    // Find the bin with the highest amplitude
+    // Find the dominant frequency
     float max_amplitude = 0.0f;
     uint32_t max_index = 0;
     for (int i = 0; i < FFT_SIZE / 2; i++) {
@@ -308,17 +311,10 @@ void perform_fft(void) {
         }
     }
 
-    // Compute the frequency corresponding to the max amplitude
+    // Compute the dominant frequency
     float dominant_frequency = (float)max_index * SAMPLE_RATE / FFT_SIZE;
 
-    // Print FFT results
-    printf("FFT Output (Frequency Bins):\n");
-    for (int i = 0; i < FFT_SIZE / 2; i++) {
-        printf("%.3f ", fft_output[i]);
-    }
-    printf("\n");
-
-    // Print dominant frequency
+    // Print results
     printf("Dominant Frequency: %.2f Hz, Amplitude: %.3f\n", dominant_frequency, max_amplitude);
 }
 
