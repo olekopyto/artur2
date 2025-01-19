@@ -1,0 +1,52 @@
+Oznaczenia:
+- Nic nie ruszone
++ Zaczęte
+++ Kompiluje się
++++ Działa, przetestowane
+
+++++
+ten blok iteruje po 4 kombinacjach  
+PB0|1|2|10
+  1|1|0|0
+  0|1|1|0
+  0|0|1|1
+  1|0|0|1
+---------------------------------------------------
+-pomiar częstotliwości PA6 PA7 rząd 10.7 MHz z maksymalną możliwą dokładnością 100 us
+-Pomiar napięcia na detektorach AFDA AFDB 3ms, do tablicy, piny PA0, PA1 sample rate 30 kHz 128x uint_16 ( bo chyba zwraca uint_16) ile cyklów procesora będzie trwał pomiar 
+
+++FFT znalezienie średniego napięcia. Jaka jest amplituda 3 kHz, lub okolicy 3. 
+
+
++Pomiar napięcia stałego na PC2 termistor VCO i na PC3 wartość  detektora zależna od kąta sygnału
+
++Pomiar napięcia stałego na RSIA RSIB
+
++Funkcja która ustawia napięcie na DAC PA4 (pomiar napięcia na AFD)
+oraz jak będziemy mieli czas to dac AD5641AKSZ
+
++Pomiar częstotliwości z PIN-ów PA6 (to co wyżej). Nie chodził dobrze! Bardzo luźne wartości
+
+-Estymacja częstotliwości oscylatora lokalnego na podstawue temperatury termistora, ustawienia dac oraz
+parametrow oscylatora z karty danych
+----------------------------------------------------
+-MIĘDZY ITERACJAMI CHCE SPAMIETYWAĆ:
+	-TABLICA MA 256 (WYMIAR) I ZAWIERA POMIAT TERMISTORA VCO w czasie 10 minut, 
+	-przy pomiarze napięcia na termistorze na podstawie danych z tablicy oraz średniej z pomiaru na detektorach AFDA AFDB, jest wykonywana decyzja o włączeniu grzałki. ( na początku pomiar)
+-ma jeszcze spamiętywać dla każdego ustawienia DAC )tablica struktur ( 1000)
+
+++
+def strukta:
+-składowa 3 kHz amplituda
+-częstotliwość
+
+struktura w strukturze faza (enum jako numer kombinacji)
+-RSIA RSIB
+-pomiar napięcia detektora x4 (dla każdej kombinacji)
+
+Propozycja kolejnych kroków:
+++Zaimplementować obliczenia FFT za pomocą biblioteki CMSIS DSP.
+Dodać funkcję do iteracyjnej zmiany stanów PB0, PB1, PB2, PB10.
+Utworzyć strukturę danych przechowującą informacje o ustawieniach DAC, amplitudzie 3 kHz, fazie, RSIA, RSIB.
+Dodać logikę sterowania grzałką i zapis danych do tablicy.
+Skonfigurować dodatkowe kanały ADC dla RSIA i RSIB.
