@@ -24,7 +24,11 @@
 /* USER CODE BEGIN Includes */
 #include "stdio.h"
 #include "arm_math.h"
-
+#include "toggle_pins.h"
+#include "read_adc_voltage.h"
+#include "read_voltage.h"
+#include "measure_frequency.h"
+#include "calculate_angles.h"
 //#include "arm_math.h"
 
 /* USER CODE END Includes */
@@ -49,21 +53,16 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-ADC_HandleTypeDef hadc1;
+
 ADC_HandleTypeDef hadc2;
 ADC_HandleTypeDef hadc3;
 DMA_HandleTypeDef hdma_adc2;
-DMA_HandleTypeDef hdma_adc1;
-
-uint16_t adc_buffer[NUM_SAMPLES * ADC_CHANNELS];
-
 
 DAC_HandleTypeDef hdac;
 
 SPI_HandleTypeDef hspi2;
-
 TIM_HandleTypeDef htim2;
-TIM_HandleTypeDef htim3;
+
 TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart2;
@@ -76,20 +75,25 @@ float fft_input[2 * FFT_SIZE];   // Input for FFT (complex format: real and imag
 float fft_output[FFT_SIZE / 2]; // Magnitude output of the FFT
 #define SAMPLE_RATE 10000       // Define your sampling rate in Hz
 float thermistor_measurement[256];
+uint16_t adc_buffer[FFT_SIZE];
+
 
 typedef struct {
     float rsia;
     float rsib;
     float voltage_measurements;
+    float frequency;
 }PhaseSettings;
 
 typedef struct {
-    float frequency;
-    float amplitude_3kHz;  // Amplituda sygnału 3 kHz (zmiennoprzecinkowa)
+    float amplitude_3kHz;
     PhaseSettings phaseSettinggs[4];
 
 } DAC_Settings;
 
+
+
+DAC_Settings measurements[1000];
 
 /* USER CODE END PV */
 
@@ -110,7 +114,7 @@ static void MX_TIM4_Init(void);
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim);
 int _write(int file, char *ptr, int len);
 void print_adc_results(void);
-void measure_frequency(void);
+//void measure_frequency(void);
 float Read_ADC_Voltage(void);
 void Start_Timer(void);
 uint32_t Stop_Timer(void);
@@ -155,48 +159,8 @@ int _write(int file, char *ptr, int len)
 //wypsiywanie pomiarów z PAO PA1
 //AF_A AF_B
 
-//FREQ_MEAS_A PA6
-void measure_frequency() {
-    // Zrestartuj licznik
-    __HAL_TIM_SET_COUNTER(&htim2, 0);
 
-    // Uruchom timery
-    HAL_TIM_Base_Start(&htim3); // Timer odmierzający 100 µs
-    HAL_TIM_IC_Start(&htim2, TIM_CHANNEL_1); // Timer zliczający impulsy
 
-    // Poczekaj na timeout (lub przerwanie)
-    HAL_Delay(1); // Tymczasowe, zamiast przerwań
-
-    // Odczytaj liczbę zliczonych impulsów
-    uint32_t pulse_count = __HAL_TIM_GET_COUNTER(&htim2);
-
-    // Przelicz na częstotliwość
-    float frequency = pulse_count / 0.0001; // 100 µs = 0.0001 s
-
-    // Zatrzymaj timery
-    HAL_TIM_Base_Stop(&htim3);
-    HAL_TIM_IC_Stop(&htim2, TIM_CHANNEL_1);
-
-    printf("Zmierzona częstotliwosc: %.2f Hz\n", frequency);
-}
-//TERMISTOR VCO TEMP PC2
-float Read_ADC_Voltage(void)
-{
-    uint32_t adcValue = 0;
-
-    // Uruchomienie konwersji ADC
-    HAL_ADC_Start(&hadc1);
-
-    // Czekanie na zakończenie konwersji
-    if (HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK)
-    {
-        adcValue = HAL_ADC_GetValue(&hadc1);  // Odczytanie wartości z ADC
-    }
-
-    // Obliczenie napięcia
-    float voltage = (float)adcValue * 3.3f / 4095.0f;  // Napięcie na podstawie odczytu ADC
-    return voltage;
-}
 
 //LICZNIKI DO FREQ_MEAS
 void Start_Timer(void)
@@ -254,28 +218,7 @@ void sendToAD5641(uint16_t value)
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_SET);
 }
 
-// Funkcja odczytu napięcia dla danego kanału ADC
-float ReadVoltage(ADC_HandleTypeDef *hadc, uint32_t channel) {
-    ADC_ChannelConfTypeDef sConfig = {0};
-    sConfig.Channel = channel;
-    //sConfig.Rank = IS_ADC_REGULAR_RANK;
-    sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
 
-    // Konfiguracja kanału
-    if (HAL_ADC_ConfigChannel(hadc, &sConfig) != HAL_OK) {
-        Error_Handler();
-    }
-
-    // Start konwersji
-    HAL_ADC_Start(hadc);
-    if (HAL_ADC_PollForConversion(hadc, HAL_MAX_DELAY) == HAL_OK) {
-        uint32_t adcValue = HAL_ADC_GetValue(hadc);
-        float voltage = (adcValue * 3.3) / 4096; // Zakładając referencję 3.3V i 12-bitowy ADC
-        return voltage;
-    }
-
-    return 0;
-}
 
 #include "arm_math.h"
 
@@ -319,48 +262,6 @@ void perform_fft(void) {
 }
 
 
-
-//przełączanie pomiędzy pinami
-void toggle_pins(void) {
-    static uint8_t state = 0;
-
-    switch (state) {
-        case 0:
-            HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_SET);  // PB0 HIGH
-            HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_SET);  // PB1 HIGH
-            HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_RESET);  // PB2 LOW
-            HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_RESET); // PB10 LOW
-            printf("0\n");
-            break;
-        case 1:
-            HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_RESET);  // PB0 LOW
-            HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_SET);    // PB1 HIGH
-            HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_SET);  // PB2 HIGH
-            HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_RESET); // PB10 LOW
-            printf("1\n");
-            break;
-        case 2:
-            HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_RESET);  // PB0 LOW
-            HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_RESET);  // PB1 LOW
-            HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_SET);    // PB2 HIGH
-            HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_SET); // PB10 HIGH
-            printf("2\n");
-            break;
-        case 3:
-            HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_SET);  // PB0 HIGH
-            HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_RESET);  // PB1 LOW
-            HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_RESET);  // PB2 LOW
-            HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_SET);   // PB10 HIGH
-            printf("3\n");
-            break;
-    }
-
-    // Zwiększanie stanu i zapewnienie cykliczności
-    state = (state + 1) % 4;
-
-    // Dodanie opóźnienia, żeby zmiany były zauważalne
-    HAL_Delay(1000);  // Opóźnienie 500 ms
-}
 
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
@@ -418,19 +319,37 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  uint8_t num =0;
   HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_1);
   while (1)
   {
     /* USER CODE END WHILE */
 
-	 toggle_pins();
-	 if (adc_ready)
-	 {
-	     adc_ready = 0;       // Clear flag
-	     perform_fft();       // Call your FFT function
-	 }
     /* USER CODE BEGIN 3 */
-	  //toggle_pins();
+
+	  for (uint8_t pair = 0; pair < 4; pair++) {
+		  toggle_pins();
+		  measurements[num].phaseSettinggs[pair].voltage_measurements=read_ADC_voltage();
+		  measurements[num].phaseSettinggs[pair].rsia=read_voltage(&hadc2, ADC_CHANNEL_0);
+		  measurements[num].phaseSettinggs[pair].rsib=read_voltage(&hadc3, ADC_CHANNEL_1);
+		  measurements[num].phaseSettinggs[pair].frequency=measure_frequency();
+		  float max_voltage = 3.3f;
+		  float cos_alpha = measurements[num].phaseSettinggs[pair].rsia / max_voltage;
+		  float cos_beta = measurements[num].phaseSettinggs[pair].rsib / max_voltage;
+		  AngleResults angles = calculate_angles(cos_alpha, cos_beta);
+		  printf("Pair %d: Detector=%.2f V, RSSI_A=%.2f V, RSSI_B=%.2f V, Frequency=%.2f Hz\n",
+				  pair,
+				  measurements[num].phaseSettinggs[pair].voltage_measurements,
+				  measurements[num].phaseSettinggs[pair].rsia,
+				  measurements[num].phaseSettinggs[pair].rsib,
+				  measurements[num].phaseSettinggs[pair].frequency
+				  );
+
+		  //set_servo_pwm(&htim4, TIM_CHANNEL_3, angles.azimuth);
+		  //set_servo_pwm(&htim4, TIM_CHANNEL_4, angles.elevation);
+		  HAL_Delay(100);
+	  }
+	  num++;
   }
   /* USER CODE END 3 */
 }
@@ -538,43 +457,52 @@ static void MX_ADC1_Init(void)
   * @param None
   * @retval None
   */
-
-
 static void MX_ADC2_Init(void)
 {
-    ADC_ChannelConfTypeDef sConfig = {0};
 
-    /* ADC2 Initialization */
-    hadc2.Instance = ADC2;
-    hadc2.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;  // Divide clock to balance speed and accuracy
-    hadc2.Init.Resolution = ADC_RESOLUTION_12B;           // 12-bit resolution
-    hadc2.Init.ScanConvMode = DISABLE;                    // Single channel
-    hadc2.Init.ContinuousConvMode = ENABLE;               // Continuous conversion mode
-    hadc2.Init.DiscontinuousConvMode = DISABLE;           // Disable discontinuous conversions
-    hadc2.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE; // No external trigger
-    hadc2.Init.ExternalTrigConv = ADC_SOFTWARE_START;     // Software-triggered conversions
-    hadc2.Init.DataAlign = ADC_DATAALIGN_RIGHT;           // Right-aligned data
-    hadc2.Init.NbrOfConversion = 1;                       // Single conversion
-    hadc2.Init.DMAContinuousRequests = ENABLE;            // Enable DMA for ADC
-    hadc2.Init.EOCSelection = ADC_EOC_SINGLE_CONV;        // End of Conversion after each sample
+  /* USER CODE BEGIN ADC2_Init 0 */
 
-    if (HAL_ADC_Init(&hadc2) != HAL_OK)
-    {
-        Error_Handler();
-    }
+  /* USER CODE END ADC2_Init 0 */
 
-    /* Configure ADC2 regular channel (PA0 -> ADC_CHANNEL_0) */
-    sConfig.Channel = ADC_CHANNEL_0;                     // Use ADC Channel 0 (PA0)
-    sConfig.Rank = 1;                                    // Rank 1 in the regular group
-    sConfig.SamplingTime = ADC_SAMPLETIME_15CYCLES;      // Increase sampling time for better accuracy
+  ADC_ChannelConfTypeDef sConfig = {0};
 
-    if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK)
-    {
-        Error_Handler();
-    }
+  /* USER CODE BEGIN ADC2_Init 1 */
+
+  /* USER CODE END ADC2_Init 1 */
+
+  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
+  */
+  hadc2.Instance = ADC2;
+  hadc2.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
+  hadc2.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc2.Init.ScanConvMode = DISABLE;
+  hadc2.Init.ContinuousConvMode = ENABLE;
+  hadc2.Init.DiscontinuousConvMode = DISABLE;
+  hadc2.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc2.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc2.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc2.Init.NbrOfConversion = 1;
+  hadc2.Init.DMAContinuousRequests = DISABLE;
+  hadc2.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  if (HAL_ADC_Init(&hadc2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
+  */
+  sConfig.Channel = ADC_CHANNEL_0;
+  sConfig.Rank = 1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
+  if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC2_Init 2 */
+
+  /* USER CODE END ADC2_Init 2 */
+
 }
-
-
 
 /**
   * @brief ADC3 Initialization Function
@@ -784,9 +712,9 @@ static void MX_TIM4_Init(void)
 
   /* USER CODE END TIM4_Init 1 */
   htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 8399; // Adjust for 1ms tick
+  htim4.Init.Prescaler = 83;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 999; // 1-second period
+  htim4.Init.Period = 19999;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_PWM_Init(&htim4) != HAL_OK)
@@ -917,7 +845,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PA8 PA9 PA10 */
-  GPIO_InitStruct.Pin = GPIO_PIN_5|GPIO_PIN_8|GPIO_PIN_9|GPIO_PIN_10;
+  GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_9|GPIO_PIN_10;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
