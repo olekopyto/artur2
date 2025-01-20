@@ -64,8 +64,8 @@ all: main-build
 main-build: artur2.elf secondary-outputs
 
 # Tool invocations
-artur2.elf artur2.map: $(OBJS) $(USER_OBJS) C:\Users\DELL-7300\Documents\GitHub\artur2\STM32F446RETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "artur2.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\DELL-7300\Documents\GitHub\artur2\STM32F446RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="artur2.map" -Wl,--gc-sections -static -L"C:\Users\DELL-7300\Documents\GitHub\artur2\Lib" -L"C:\DELL-7300\STM32Cube\Repository\STM32Cube_FW_F4_V1.28.1\Drivers\CMSIS\DSP\Source" -u _printf_float --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -u _printf_float -u _scanf_float -Wl,--start-group -lc -lm -Wl,--end-group
+artur2.elf artur2.map: $(OBJS) $(USER_OBJS) C:\Users\matwa\Documents\artur2\STM32F446RETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "artur2.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\matwa\Documents\artur2\STM32F446RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="artur2.map" -Wl,--gc-sections -static -L"C:\Users\matwa\Documents\artur2\Lib" -L"C:\DELL-7300\STM32Cube\Repository\STM32Cube_FW_F4_V1.28.1\Drivers\CMSIS\DSP\Source" -u _printf_float --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -u _printf_float -u _scanf_float -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
