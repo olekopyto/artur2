@@ -24,6 +24,7 @@
 /* USER CODE BEGIN Includes */
 #include "stdio.h"
 #include "arm_math.h"
+#include "temperature_control.h"
 
 //#include "arm_math.h"
 
@@ -413,7 +414,7 @@ int main(void)
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
   HAL_ADC_Start_DMA(&hadc2, (uint32_t *)adc_buffer, NUM_SAMPLES);
-
+  Heater_Update_Blocking();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -431,6 +432,7 @@ int main(void)
 	 }
     /* USER CODE BEGIN 3 */
 	  //toggle_pins();
+	 Heater_Update_Non_Blocking();
   }
   /* USER CODE END 3 */
 }
