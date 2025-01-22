@@ -186,7 +186,7 @@ void Measure_Time(void)
     uint32_t elapsed_time = Stop_Timer();
 
     // Wyświetlenie wyniku
-    printf("Zmierzony czas: %lu µs\n", elapsed_time);
+    printf("Zmierzony czas: %lu µs\n\r", elapsed_time);
 }
 
 
@@ -226,7 +226,7 @@ void perform_fft(void) {
     // Initialize RFFT instance
     arm_rfft_fast_instance_f32 S;
     if (arm_rfft_fast_init_f32(&S, FFT_SIZE) != ARM_MATH_SUCCESS) {
-        printf("FFT Initialization Error!\n");
+        printf("FFT Initialization Error!\n\r");
         return;
     }
 
@@ -258,7 +258,7 @@ void perform_fft(void) {
     float dominant_frequency = (float)max_index * SAMPLE_RATE / FFT_SIZE;
 
     // Print results
-    printf("Dominant Frequency: %.2f Hz, Amplitude: %.3f\n", dominant_frequency, max_amplitude);
+    printf("Dominant Frequency: %.2f Hz, Amplitude: %.3f\n\r", dominant_frequency, max_amplitude);
 }
 
 
@@ -496,7 +496,8 @@ int main(void)
 		  float cos_alpha = measurements[num].phaseSettinggs[pair].rsia / max_voltage;
 		  float cos_beta = measurements[num].phaseSettinggs[pair].rsib / max_voltage;
 		  AngleResults angles = calculate_angles(cos_alpha, cos_beta);
-		  printf("Pair %d: Detector=%.2f V, RSSI_A=%.2f V, RSSI_B=%.2f V, Frequency=%.2f Hz\n",
+
+		  printf("Pair %d: Detector=%.2f V, RSSI_A=%.2f V, RSSI_B=%.2f V, Frequency=%.2f Hz\n\r",
 				  pair,
 				  measurements[num].phaseSettinggs[pair].voltage_measurements,
 				  measurements[num].phaseSettinggs[pair].rsia,

@@ -32,13 +32,13 @@ extern ADC_HandleTypeDef hadc1;
 
 void Heater_On(void)
 {
-	printf("switching heater on\n");
+	printf("switching heater on\n\r");
     HAL_GPIO_WritePin(HEATER_GPIO_PORT, HEATER_GPIO_PIN, GPIO_PIN_SET);
 }
 
 void Heater_Off(void)
 {
-	printf("switching heater off\n");
+	printf("switching heater off\n\r");
     HAL_GPIO_WritePin(HEATER_GPIO_PORT, HEATER_GPIO_PIN, GPIO_PIN_RESET);
 }
 
@@ -72,7 +72,7 @@ float Read_Temperature_Celsius(void)
     float tempKelvin = 1.0f / invT;
     float tempCelsius = tempKelvin - 273.15f;
 
-    printf("temp: %f\n", tempCelsius);
+    printf("temp: %f\n\r", tempCelsius);
 
     return tempCelsius;
 }
