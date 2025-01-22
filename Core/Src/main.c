@@ -71,7 +71,7 @@ UART_HandleTypeDef huart2;
 volatile uint32_t measuredFrequency = 0;
 volatile uint8_t adc_ready = 0;
 extern UART_HandleTypeDef huart2;
-float fft_input[2 * FFT_SIZE];   // Input for FFT (complex format: real and imaginary parts)
+float fft_input[2*FFT_SIZE];
 float fft_output[FFT_SIZE / 2]; // Magnitude output of the FFT
 #define SAMPLE_RATE 10000       // Define your sampling rate in Hz
 float thermistor_measurement[256];
@@ -271,6 +271,162 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
 }
 
 
+#define DAC_MAX_VALUE          4095
+#define DAC_STEP_SIZE          1
+
+#define SAMPLES_COUNT          128       // Number of audio samples
+#define SAMPLE_FREQUENCY       10000.0f  // 10 kHz sampling
+#define TARGET_FREQ_BIN        13        // Approx. bin index for 1 kHz in 128-pt FFT at 10 kHz
+#define RSSI_THRESHOLD         (0.05f)   // Example threshold for -50 dB, tune for your hardware
+#define RATIO_THRESHOLD        2.0f      // Must be 2x average amplitude
+
+// Structure to hold scanning candidates
+typedef struct {
+    float approximateSignalFrequency;  // e.g., from mapping DAC value to frequency
+    uint16_t dacValue;
+    float vcoTemperature;
+    float amplitude1kHz;
+    float averageAmplitude;
+    float ratio;  // amplitude1kHz / averageAmplitude
+} CandidateResult;
+
+// Global or static arrays to store candidates
+static CandidateResult candidateList[64]; // Adjust size if you expect more
+static uint32_t candidateCount = 0;
+
+// Forward declarations of functions assumed to exist.
+
+//-------------------------------------------------------------------------
+// Function: Perform a scanning procedure over a DAC range
+//-------------------------------------------------------------------------
+
+// Example frequency mapping for demonstration.
+// Tweak to match your VCO's tuning curve or actual measured function.
+static float CalculateFrequencyFromDAC(uint16_t dacValue)
+{
+    // Suppose 0 -> 2.3 GHz, 4095 -> 2.6 GHz, purely as an example:
+    float freqMin = 2.3e9f; // 2.3 GHz
+    float freqMax = 2.6e9f; // 2.6 GHz
+    float ratio   = (float)dacValue / (float)DAC_MAX_VALUE;
+    return freqMin + ratio * (freqMax - freqMin);
+}
+
+static void SetDACValue(uint16_t dacValue)
+{
+    // Example stub. You would set your hardware DAC here.
+    // e.g., HAL_DAC_SetValue(&hdac, DAC_CHANNEL_1, DAC_ALIGN_12B_R, dacValue);
+}
+
+static float MeasureRSSI(void)
+{
+    //TODO
+	return 0;
+}
+
+static void AcquireAudioSamples(float *buffer, uint32_t numSamples, float sampleRate)
+{
+	//remember that buffer size = 2*numSamples
+   //TODO
+}
+
+
+void ScanFrequencyRange(void)
+{
+    float bestRatio = 0.0f;
+    uint16_t bestDACValue = 0;
+
+    // Clear candidate list
+    candidateCount = 0;
+
+    // Iterate through the DAC range
+    for(uint16_t dacValue = 0; dacValue <= DAC_MAX_VALUE; dacValue += DAC_STEP_SIZE)
+    {
+        // 1) Set the DAC to the current value
+        SetDACValue(dacValue);
+
+        // 2) Measure the RSSI
+        float rssi = MeasureRSSI();
+
+        // Check if RSSI > -50 dB threshold
+        if(rssi > RSSI_THRESHOLD)
+        {
+            // 3) Acquire 128 samples of the demodulated audio at 10 kHz
+            AcquireAudioSamples(fft_input, FFT_SIZE, SAMPLE_FREQUENCY);
+
+
+
+            // 5) Check amplitude at ~1 kHz vs. average amplitude
+            //    The bin for 1 kHz is roughly ~13 for 128 samples at 10 kHz
+            float amplitude1kHz = fft_output[TARGET_FREQ_BIN];
+
+            // Compute average amplitude across all bins from 0..(SAMPLES_COUNT/2 - 1)
+            // (You might skip bin 0 if it’s large DC, but that’s up to you.)
+            float sum = 0.0f;
+            for(uint32_t i = 0; i < (SAMPLES_COUNT / 2); i++) {
+                sum += fft_output[i];
+            }
+            float avgAmplitude = sum / (float)(SAMPLES_COUNT / 2);
+
+            float ratio = amplitude1kHz / (avgAmplitude + 1e-9f); // Avoid divide-by-zero
+
+            // Check if amplitude at 1 kHz is >= 2x average
+            if(ratio >= RATIO_THRESHOLD)
+            {
+                // 6) Record in candidate list
+                if(candidateCount < (sizeof(candidateList)/sizeof(candidateList[0])))
+                {
+                    candidateList[candidateCount].approximateSignalFrequency = CalculateFrequencyFromDAC(dacValue);
+                    candidateList[candidateCount].dacValue                 = dacValue;
+                    candidateList[candidateCount].vcoTemperature           = Read_Temperature_Celsius();
+                    candidateList[candidateCount].amplitude1kHz            = amplitude1kHz;
+                    candidateList[candidateCount].averageAmplitude         = avgAmplitude;
+                    candidateList[candidateCount].ratio                    = ratio;
+                    candidateCount++;
+                }
+
+                // 7) Print results
+                printf("Candidate found!\n");
+                printf("  DAC = %u\n", dacValue);
+                printf("  RSSI = %.3f\n", rssi);
+                printf("  Approx. Frequency = %.2f Hz\n",
+                       CalculateFrequencyFromDAC(dacValue));
+                printf("  Temperature = %.2f degC\n", Read_Temperature_Celsius());
+                printf("  1 kHz amplitude = %.4f\n", amplitude1kHz);
+                printf("  Average amplitude = %.4f\n", avgAmplitude);
+                printf("  Ratio (1kHz/avg) = %.2f\n", ratio);
+
+                // Keep track of the best ratio
+                if(ratio > bestRatio)
+                {
+                    bestRatio   = ratio;
+                    bestDACValue = dacValue;
+                }
+            }
+        } // end if RSSI > threshold
+    } // end for(dacValue)
+
+    // 8) After scanning, set DAC to the value that yielded the highest ratio
+    if(bestRatio > 0.0f)
+    {
+        SetDACValue(bestDACValue);
+        printf("\nSetting DAC to best ratio candidate:\n");
+        printf("  Best DAC Value = %u\n", bestDACValue);
+        printf("  Best Ratio     = %.2f\n\n", bestRatio);
+    }
+    else
+    {
+        printf("No valid candidate found above threshold.\n");
+    }
+}
+
+//-------------------------------------------------------------------------
+// Example stubs for hardware-specific functions
+// (Implement these for your hardware.)
+//-------------------------------------------------------------------------
+
+
+
+
 /* USER CODE END 0 */
 
 /**
@@ -315,6 +471,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   HAL_ADC_Start_DMA(&hadc2, (uint32_t *)adc_buffer, NUM_SAMPLES);
   Heater_Update_Blocking();
+  ScanFrequencyRange();
   /* USER CODE END 2 */
 
   /* Infinite loop */
