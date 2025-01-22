@@ -385,15 +385,15 @@ void ScanFrequencyRange(void)
                 }
 
                 // 7) Print results
-                printf("Candidate found!\n");
-                printf("  DAC = %u\n", dacValue);
-                printf("  RSSI = %.3f\n", rssi);
-                printf("  Approx. Frequency = %.2f Hz\n",
+                printf("Candidate found!\n\r");
+                printf("  DAC = %u\n\r", dacValue);
+                printf("  RSSI = %.3f\n\r", rssi);
+                printf("  Approx. Frequency = %.2f Hz\n\r",
                        CalculateFrequencyFromDAC(dacValue));
-                printf("  Temperature = %.2f degC\n", Read_Temperature_Celsius());
-                printf("  1 kHz amplitude = %.4f\n", amplitude1kHz);
-                printf("  Average amplitude = %.4f\n", avgAmplitude);
-                printf("  Ratio (1kHz/avg) = %.2f\n", ratio);
+                printf("  Temperature = %.2f degC\n\r", Read_Temperature_Celsius());
+                printf("  1 kHz amplitude = %.4f\n\r", amplitude1kHz);
+                printf("  Average amplitude = %.4f\n\r", avgAmplitude);
+                printf("  Ratio (1kHz/avg) = %.2f\n\r", ratio);
 
                 // Keep track of the best ratio
                 if(ratio > bestRatio)
@@ -409,13 +409,13 @@ void ScanFrequencyRange(void)
     if(bestRatio > 0.0f)
     {
         SetDACValue(bestDACValue);
-        printf("\nSetting DAC to best ratio candidate:\n");
-        printf("  Best DAC Value = %u\n", bestDACValue);
-        printf("  Best Ratio     = %.2f\n\n", bestRatio);
+        printf("\nSetting DAC to best ratio candidate:\n\r");
+        printf("  Best DAC Value = %u\n\r", bestDACValue);
+        printf("  Best Ratio     = %.2f\n\n\r", bestRatio);
     }
     else
     {
-        printf("No valid candidate found above threshold.\n");
+        printf("No valid candidate found above threshold.\n\r");
     }
 }
 
@@ -486,6 +486,8 @@ int main(void)
 	  //toggle_pins();
 	 Heater_Update_Non_Blocking();
 
+	 float cos_alpha[4];
+	 float cos_beta[4];
 	  for (uint8_t pair = 0; pair < 4; pair++) {
 		  toggle_pins();
 		  measurements[num].phaseSettinggs[pair].voltage_measurements=read_ADC_voltage();
@@ -493,10 +495,11 @@ int main(void)
 		  measurements[num].phaseSettinggs[pair].rsib=read_voltage(&hadc3, ADC_CHANNEL_1);
 		  measurements[num].phaseSettinggs[pair].frequency=measure_frequency();
 		  float max_voltage = 3.3f;
-		  float cos_alpha = measurements[num].phaseSettinggs[pair].rsia / max_voltage;
-		  float cos_beta = measurements[num].phaseSettinggs[pair].rsib / max_voltage;
-		  AngleResults angles = calculate_angles(cos_alpha, cos_beta);
+		  float mcos_alpha = measurements[num].phaseSettinggs[pair].rsia / max_voltage;
+		  float mcos_beta = measurements[num].phaseSettinggs[pair].rsib / max_voltage;
 
+		  cos_alpha[pair] = mcos_alpha;
+		  cos_beta[pair]  = mcos_beta;
 		  printf("Pair %d: Detector=%.2f V, RSSI_A=%.2f V, RSSI_B=%.2f V, Frequency=%.2f Hz\n\r",
 				  pair,
 				  measurements[num].phaseSettinggs[pair].voltage_measurements,
@@ -509,6 +512,7 @@ int main(void)
 		  //set_servo_pwm(&htim4, TIM_CHANNEL_4, angles.elevation);
 		  HAL_Delay(100);
 	  }
+	  AngleResults angles = calculate_angles(cos_alpha, cos_beta);
 	  num++;
   }
   /* USER CODE END 3 */
